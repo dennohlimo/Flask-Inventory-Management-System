@@ -10,7 +10,10 @@ def search_by_barcode(barcode):
     return item
 
 def search_by_name(product_name):
-    item = food_api.product.text_search(product_name, page_size=1)
+    try:
+        item = food_api.product.text_search(product_name, page_size=1)
+        return item
 
-    return item
-
+    except Exception as error:
+        print("Name search error:", error)
+        return None
