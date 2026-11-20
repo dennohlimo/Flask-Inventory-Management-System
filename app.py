@@ -1,24 +1,17 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import openfoodfacts
+from food_api import search_by_barcode, search_by_name
+
 
 app = Flask(__name__)
 CORS(app)
 
-
-# Create the OpenFoodFacts client
-food_api = openfoodfacts.API(
-    user_agent="InventoryManager/1.0"
-)
-
-
-# Temporary inventory for Charon Fresh Market
 inventory = [
     {
         "id": 1,
         "product_name": "Kenyan Premium Macadamia Milk",
         "brands": "NutriHarvest",
-        "barcode": "0619202500018",
+        "barcode": "0619209900018",
         "price": 450.00,
         "stock": 32,
         "ingredients_text": "Macadamia nuts, filtered water, natural sweetener"
@@ -27,7 +20,7 @@ inventory = [
         "id": 2,
         "product_name": "Creamy Honey Peanut Spread",
         "brands": "Golden Spoon",
-        "barcode": "0619202500025",
+        "barcode": "0111102500025",
         "price": 380.00,
         "stock": 24,
         "ingredients_text": "Roasted peanuts, natural honey, sea salt"
@@ -36,7 +29,7 @@ inventory = [
         "id": 3,
         "product_name": "Whole Grain Breakfast Loaf",
         "brands": "Daily Harvest",
-        "barcode": "0619202500032",
+        "barcode": "079980012500032",
         "price": 250.00,
         "stock": 18,
         "ingredients_text": "Whole wheat flour, oats, yeast, sunflower seeds"
@@ -45,7 +38,7 @@ inventory = [
         "id": 4,
         "product_name": "Natural Tropical Mango Juice",
         "brands": "TropiFresh",
-        "barcode": "0619202500049",
+        "barcode": "099802500049",
         "price": 180.00,
         "stock": 45,
         "ingredients_text": "Mango juice, water, natural fruit extract"
@@ -61,20 +54,17 @@ inventory = [
     }
 ]
 
-
-
-
 @app.route("/", methods=["GET"])
 def index():
     main = "<h1>Home</h1>"
     return main
 
-# All Products
+
 @app.route("/inventory", methods=["GET"])
 def all():
     return jsonify(inventory), 200
 
-# One product
+
 @app.route("/inventory/<int:id>", methods=["GET"])
 def one(id):
     item = next((i for i in inventory if i["id"]==id), None)
@@ -83,7 +73,6 @@ def one(id):
         return jsonify({"error": "Item not found"}), 404
     return jsonify(item), 200
 
-# Create a Product
 
 @app.route("/inventory", methods=["POST"])
 def create():
@@ -119,9 +108,8 @@ def create():
         "product": new_product
     }), 201
 
-# Update a product
 
-# Update a product
+
 @app.route("/inventory/<int:id>", methods=["PATCH"])
 def update(id):
     data = request.get_json()
@@ -157,7 +145,7 @@ def update(id):
         "product": product
     }), 200
 
-# delete a product
+
 @app.route("/inventory/<int:id>", methods=["DELETE"])
 def delete(id):
     global inventory
@@ -175,16 +163,68 @@ def delete(id):
         "message": f"Product '{product_name}' deleted successfully"
     }), 200
 
+@app.route("/inventory/search", methods=["GET"])
+def search_product():
+    barcode = request.args.get("barcode")
+    product_name = request.args.get("name")
 
+    if barcode:
+        item = search_by_barcode(barcode)
+
+    elif product_name:
+        item = search_by_name(product_name)
+
+    else:
+        return jsonify({
+            "error": "Please enter a barcode or product name"
+        }), 400
+
+    if not item:
+        return jsonify({
+            "error": "Item not found"
+        }), 404
+
+    return jsonify(item), 200
+
+@app.route("/inventory/import", methods=["POST"])
+def import_product():
+    data = request.get_json() or {}
+
+    barcode = data.get("barcode")
     
+    if barcode:
+        item = search_by_barcode(barcode)
+    else:
+        return jsonify({"error": "Please provide a barcode"}), 400
 
+    if not item:
+        return jsonify({
+            "error": "Product not found"
+        }), 404
 
+    existing = next((i for i in inventory if i["barcode"] == barcode), None)
 
+    if existing:
+        return jsonify({"error": "Product already exists in inventory"}), 409
 
+    new_id = max([i["id"] for i in inventory], default=0)+1
 
+    new_product = {
+        "id": new_id,
+        "product_name": item.get("product_name", ""),
+        "brands": item.get("brands", ""),
+        "barcode": item.get("code", barcode or ""),
+        "price": data.get("price", 0.0),
+        "stock": data.get("stock", 0),
+        "ingredients_text": item.get("ingredients_text", "")
+    }
 
+    inventory.append(new_product)
 
-
+    return jsonify({
+        "message": "Product imported successfully",
+        "product": new_product
+    }), 201
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
